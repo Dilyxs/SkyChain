@@ -10,7 +10,6 @@ function App() {
           path="/walletconnect"
           element={<WalletConnector></WalletConnector>}
         ></Route>
-        <Route></Route>
       </Routes>
     </BrowserRouter>
   );

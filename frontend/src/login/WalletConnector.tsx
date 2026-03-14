@@ -1,3 +1,3 @@
-export const WalletConnector = (props: {}) => {
+export const WalletConnector = () => {
   return <div></div>;
 };

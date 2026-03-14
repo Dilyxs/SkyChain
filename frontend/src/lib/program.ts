@@ -1,6 +1,9 @@
-import { Connection, PublicKey, Keypair } from "@solana/web3.js";
+import { Connection, PublicKey, Keypair, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { Program, BN, AnchorProvider } from "@coral-xyz/anchor";
+import type { Idl } from "@coral-xyz/anchor";
 import type { NoFlyZone, ZonePoint } from "./types";
 import { MOCK_ZONES } from "./mockData";
+import idl from "../../idl/sky_chain.json";
 
 // ============================================================
 // CONFIG
@@ -8,7 +11,7 @@ import { MOCK_ZONES } from "./mockData";
 
 const PROGRAM_ID = new PublicKey("Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd");
 const RPC_URL = "https://api.devnet.solana.com";
-const USE_MOCKS = true; // flip to false when program is deployed
+const USE_MOCKS = false;
 
 // ============================================================
 // CONNECTION
@@ -16,46 +19,45 @@ const USE_MOCKS = true; // flip to false when program is deployed
 
 const connection = new Connection(RPC_URL, "confirmed");
 
-/**
- * Initialize the Anchor program.
- * Uncomment when IDL is plugged in and USE_MOCKS is false.
- */
-// import { AnchorProvider, Program, Idl, BN } from "@coral-xyz/anchor";
-// import idl from "../../idl/sky_chain.json";
-//
-// function getProgram(wallet?: Keypair) {
-//   const provider = wallet
-//     ? new AnchorProvider(connection, {
-//         publicKey: wallet.publicKey,
-//         signTransaction: async (tx) => { tx.sign(wallet); return tx; },
-//         signAllTransactions: async (txs) => { txs.forEach(tx => tx.sign(wallet)); return txs; },
-//       }, { commitment: "confirmed" })
-//     : { connection };
-//   return new Program(idl as Idl, PROGRAM_ID, provider);
-// }
+function getProgram(wallet?: Keypair) {
+  if (wallet) {
+    const anchorWallet = {
+      publicKey: wallet.publicKey,
+      signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
+        if (tx instanceof Transaction) tx.sign(wallet);
+        return tx;
+      },
+      signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> => {
+        txs.forEach((tx) => { if (tx instanceof Transaction) tx.sign(wallet); });
+        return txs;
+      },
+    };
+    const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
+    return new Program(idl as Idl, provider);
+  }
+  return new Program(idl as Idl, { connection });
+}
 
 // ============================================================
 // DERIVED ADDRESSES
 // ============================================================
 
-/** Authority config PDA - seeds are ["authority"] per the IDL */
+const enc = new TextEncoder();
+
+/** Authority config PDA — seeds: ["authority"] */
 export function deriveAuthorityPda(): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("authority")],
-    PROGRAM_ID
+    [enc.encode("authority")],
+    PROGRAM_ID,
   );
   return pda;
 }
 
-/**
- * Zone PDA - seeds are UNKNOWN, must confirm with teammate.
- * Placeholder using ["no_fly_zone", polygonId].
- * UPDATE THIS once teammate confirms the seeds.
- */
+/** Zone PDA — seeds: ["no_fly_zone", polygonId] (confirmed from lib.rs:79) */
 export function deriveZonePda(polygonId: string): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("no_fly_zone"), Buffer.from(polygonId)],
-    PROGRAM_ID
+    [enc.encode("no_fly_zone"), enc.encode(polygonId)],
+    PROGRAM_ID,
   );
   return pda;
 }
@@ -70,17 +72,24 @@ export async function getAllZones(): Promise<NoFlyZone[]> {
     return MOCK_ZONES;
   }
 
-  // REAL IMPLEMENTATION:
-  // const program = getProgram();
-  // const accounts = await program.account.noFlyZone.all();
-  // return accounts.map((acc) => ({
-  //   zoneId: (acc.account.zoneId as BN).toNumber(),
-  //   polygonId: acc.account.polygonId as string,
-  //   owner: (acc.account.owner as PublicKey).toString(),
-  //   polygon: acc.account.polygon as ZonePoint[],
-  // }));
-
-  return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const program = getProgram() as any;
+  const accounts = await program.account.noFlyZone.all();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return accounts.map((acc: any) => {
+    const data = acc.account as {
+      zoneId: BN;
+      polygonId: string;
+      owner: PublicKey;
+      polygon: ZonePoint[];
+    };
+    return {
+      zoneId: data.zoneId.toNumber(),
+      polygonId: data.polygonId,
+      owner: data.owner.toString(),
+      polygon: data.polygon,
+    };
+  });
 }
 
 export async function getZone(polygonId: string): Promise<NoFlyZone | null> {
@@ -89,76 +98,90 @@ export async function getZone(polygonId: string): Promise<NoFlyZone | null> {
     return MOCK_ZONES.find((z) => z.polygonId === polygonId) ?? null;
   }
 
-  // REAL IMPLEMENTATION (requires correct PDA seeds):
-  // const program = getProgram();
-  // const pda = deriveZonePda(polygonId);
-  // try {
-  //   const acc = await program.account.noFlyZone.fetch(pda);
-  //   return {
-  //     zoneId: (acc.zoneId as BN).toNumber(),
-  //     polygonId: acc.polygonId as string,
-  //     owner: (acc.owner as PublicKey).toString(),
-  //     polygon: acc.polygon as ZonePoint[],
-  //   };
-  // } catch {
-  //   return null;
-  // }
-
-  return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const program = getProgram() as any;
+  const pda = deriveZonePda(polygonId);
+  try {
+    const acc = await program.account.noFlyZone.fetch(pda);
+    const data = acc as {
+      zoneId: BN;
+      polygonId: string;
+      owner: PublicKey;
+      polygon: ZonePoint[];
+    };
+    return {
+      zoneId: data.zoneId.toNumber(),
+      polygonId: data.polygonId,
+      owner: data.owner.toString(),
+      polygon: data.polygon,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ============================================================
 // WRITE OPERATIONS (wallet required)
 // ============================================================
 
+/** Returns true if the authority_config PDA has already been initialized. */
+export async function isAuthorityInitialized(): Promise<boolean> {
+  const pda = deriveAuthorityPda();
+  const info = await connection.getAccountInfo(pda);
+  return info !== null;
+}
+
+/**
+ * One-time setup: initializes the authority_config PDA.
+ * Must be called before any createZone calls.
+ */
+export async function initAuthority(wallet: Keypair): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const program = getProgram(wallet) as any;
+  const authorityPda = deriveAuthorityPda();
+  const tx = await program.methods
+    .setAuthority(wallet.publicKey)
+    .accounts({
+      authority: authorityPda,
+      owner: wallet.publicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([wallet])
+    .rpc();
+  return tx;
+}
+
 /**
  * Create a new no-fly zone on-chain.
- * BLOCKED: Need to confirm whether no_fly_zone account is a PDA or Keypair.
+ * PDA seeds confirmed: ["no_fly_zone", polygonId] (lib.rs:79)
  */
 export async function createZone(
-  _wallet: Keypair,
-  _polygonId: string,
-  _zoneId: number,
-  _polygon: ZonePoint[],
+  wallet: Keypair,
+  polygonId: string,
+  zoneId: number,
+  polygon: ZonePoint[],
 ): Promise<string> {
   if (USE_MOCKS) {
-    console.log("[MOCK] Would create zone:", _polygonId);
+    console.log("[MOCK] Would create zone:", polygonId);
     return "MOCK_TX_SIGNATURE";
   }
 
-  // REAL IMPLEMENTATION (PDA approach - if teammate confirms seeds):
-  // const program = getProgram(wallet);
-  // const zonePda = deriveZonePda(polygonId);
-  // const authorityPda = deriveAuthorityPda();
-  // const tx = await program.methods
-  //   .createNoFlyZone(polygonId, new BN(zoneId), polygon)
-  //   .accounts({
-  //     noFlyZone: zonePda,
-  //     authorityConfig: authorityPda,
-  //     authority: wallet.publicKey,
-  //     systemProgram: SystemProgram.programId,
-  //   })
-  //   .signers([wallet])
-  //   .rpc();
-  // return tx;
+  const program = getProgram(wallet);
+  const zonePda = deriveZonePda(polygonId);
+  const authorityPda = deriveAuthorityPda();
 
-  // ALTERNATIVE (Keypair approach - if no_fly_zone is NOT a PDA):
-  // const program = getProgram(wallet);
-  // const zoneKeypair = Keypair.generate();
-  // const authorityPda = deriveAuthorityPda();
-  // const tx = await program.methods
-  //   .createNoFlyZone(polygonId, new BN(zoneId), polygon)
-  //   .accounts({
-  //     noFlyZone: zoneKeypair.publicKey,
-  //     authorityConfig: authorityPda,
-  //     authority: wallet.publicKey,
-  //     systemProgram: SystemProgram.programId,
-  //   })
-  //   .signers([wallet, zoneKeypair])
-  //   .rpc();
-  // return tx;
+  const tx = await program.methods
+    .createNoFlyZone(polygonId, new BN(zoneId), polygon)
+    .accounts({
+      noFlyZone: zonePda,
+      authorityConfig: authorityPda,
+      authority: wallet.publicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([wallet])
+    .rpc();
 
-  return "";
+  return tx;
 }
 
 export { connection, PROGRAM_ID };
