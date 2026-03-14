@@ -9,16 +9,14 @@ pub mod sky_chain {
     pub fn create_no_fly_zone(
         ctx: Context<CreateNoFlyZone>,
         zone_id: u64,
-        lat: f64,
-        lng: f64,
-        radius_meters: u32,
+        polygon: Vec<ZonePoints>,
+        polygon_id: String,
     ) -> Result<()> {
         let no_fly_zone = &mut ctx.accounts.no_fly_zone;
         no_fly_zone.zone_id = zone_id;
-        no_fly_zone.lat = lat;
-        no_fly_zone.lng = lng;
-        no_fly_zone.radius_meters = radius_meters;
         no_fly_zone.owner = ctx.accounts.authority.key();
+        no_fly_zone.polygon = polygon;
+        no_fly_zone.polygon_id = polygon_id;
         Ok(())
     }
 
@@ -56,13 +54,13 @@ pub struct SetAuthority<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(zone_id:u64)]
+#[instruction(polygon_id:String)]
 pub struct CreateNoFlyZone<'info> {
     #[account(
         init_if_needed,
         payer = authority,
         space = ANCHOR_DISCRIMINATOR_SIZE + NoFlyZone::INIT_SPACE,
-        seeds = [&b"no_fly_zone"[..], &zone_id.to_le_bytes()[..]],
+        seeds = [&b"no_fly_zone"[..], &polygon_id.as_bytes()],
         bump,
     )]
     pub no_fly_zone: Account<'info, NoFlyZone>,
@@ -77,14 +75,35 @@ pub struct CreateNoFlyZone<'info> {
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
+
+#[derive(Accounts)]
+#[instruction(polygon_id:String)]
+pub struct DeleteFlyZone<'info> {
+    #[account(
+        mut,
+        seeds = [&b"no_fly_zone"[..], &polygon_id.as_bytes()],
+        bump,
+        close=authority
+    )]
+    pub no_fly_zone: Account<'info, NoFlyZone>,
+    pub authority: Signer<'info>,
+}
 #[account]
 #[derive(InitSpace)]
 pub struct NoFlyZone {
     pub zone_id: u64,
+    #[max_len(100)]
+    pub polygon_id: String,
+    pub owner: Pubkey,
+    #[max_len(1000)]
+    pub polygon: Vec<ZonePoints>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct ZonePoints {
     pub lat: f64,
     pub lng: f64,
-    pub radius_meters: u32,
-    pub owner: Pubkey,
 }
 
 #[account]
