@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Keypair, SystemProgram, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import { Program, BN, AnchorProvider } from "@coral-xyz/anchor";
 import type { Idl } from "@coral-xyz/anchor";
 import type { NoFlyZone, ZonePoint } from "./types";
@@ -17,25 +17,16 @@ const USE_MOCKS = false;
 // CONNECTION
 // ============================================================
 
-const connection = new Connection(RPC_URL, "confirmed");
+export const connection = new Connection(RPC_URL, "confirmed");
 
-function getProgram(wallet?: Keypair) {
-  if (wallet) {
-    const anchorWallet = {
-      publicKey: wallet.publicKey,
-      signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
-        if (tx instanceof Transaction) tx.sign(wallet);
-        return tx;
-      },
-      signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> => {
-        txs.forEach((tx) => { if (tx instanceof Transaction) tx.sign(wallet); });
-        return txs;
-      },
-    };
-    const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
-    return new Program(idl as Idl, provider);
-  }
-  return new Program(idl as Idl, { connection });
+// Read-only program (no wallet)
+function getReadProgram() {
+  return new Program(idl as Idl, { connection }) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
+
+// Write program (provider carries the wallet — keypair or browser wallet)
+function getWriteProgram(provider: AnchorProvider) {
+  return new Program(idl as Idl, provider) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
 // ============================================================
@@ -72,16 +63,11 @@ export async function getAllZones(): Promise<NoFlyZone[]> {
     return MOCK_ZONES;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const program = getProgram() as any;
+  const program = getReadProgram();
   const accounts = await program.account.noFlyZone.all();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return accounts.map((acc: any) => {
+  return accounts.map((acc: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
     const data = acc.account as {
-      zoneId: BN;
-      polygonId: string;
-      owner: PublicKey;
-      polygon: ZonePoint[];
+      zoneId: BN; polygonId: string; owner: PublicKey; polygon: ZonePoint[];
     };
     return {
       zoneId: data.zoneId.toNumber(),
@@ -98,16 +84,12 @@ export async function getZone(polygonId: string): Promise<NoFlyZone | null> {
     return MOCK_ZONES.find((z) => z.polygonId === polygonId) ?? null;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const program = getProgram() as any;
+  const program = getReadProgram();
   const pda = deriveZonePda(polygonId);
   try {
     const acc = await program.account.noFlyZone.fetch(pda);
     const data = acc as {
-      zoneId: BN;
-      polygonId: string;
-      owner: PublicKey;
-      polygon: ZonePoint[];
+      zoneId: BN; polygonId: string; owner: PublicKey; polygon: ZonePoint[];
     };
     return {
       zoneId: data.zoneId.toNumber(),
@@ -120,43 +102,33 @@ export async function getZone(polygonId: string): Promise<NoFlyZone | null> {
   }
 }
 
-// ============================================================
-// WRITE OPERATIONS (wallet required)
-// ============================================================
-
 /** Returns true if the authority_config PDA has already been initialized. */
 export async function isAuthorityInitialized(): Promise<boolean> {
-  const pda = deriveAuthorityPda();
-  const info = await connection.getAccountInfo(pda);
+  const info = await connection.getAccountInfo(deriveAuthorityPda());
   return info !== null;
 }
 
-/**
- * One-time setup: initializes the authority_config PDA.
- * Must be called before any createZone calls.
- */
-export async function initAuthority(wallet: Keypair): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const program = getProgram(wallet) as any;
-  const authorityPda = deriveAuthorityPda();
-  const tx = await program.methods
-    .setAuthority(wallet.publicKey)
+// ============================================================
+// WRITE OPERATIONS (AnchorProvider required)
+// Both keypair-based and browser-wallet-based providers work here.
+// ============================================================
+
+/** One-time setup: initializes the authority_config PDA. */
+export async function initAuthority(provider: AnchorProvider): Promise<string> {
+  const program = getWriteProgram(provider);
+  return program.methods
+    .setAuthority(provider.publicKey)
     .accounts({
-      authority: authorityPda,
-      owner: wallet.publicKey,
+      authority: deriveAuthorityPda(),
+      owner: provider.publicKey,
       systemProgram: SystemProgram.programId,
     })
-    .signers([wallet])
     .rpc();
-  return tx;
 }
 
-/**
- * Create a new no-fly zone on-chain.
- * PDA seeds confirmed: ["no_fly_zone", polygonId] (lib.rs:79)
- */
+/** Create a new no-fly zone on-chain. PDA seeds: ["no_fly_zone", polygonId] */
 export async function createZone(
-  wallet: Keypair,
+  provider: AnchorProvider,
   polygonId: string,
   zoneId: number,
   polygon: ZonePoint[],
@@ -166,45 +138,33 @@ export async function createZone(
     return "MOCK_TX_SIGNATURE";
   }
 
-  const program = getProgram(wallet);
-  const zonePda = deriveZonePda(polygonId);
-  const authorityPda = deriveAuthorityPda();
-
-  const tx = await program.methods
+  const program = getWriteProgram(provider);
+  return program.methods
     .createNoFlyZone(polygonId, new BN(zoneId), polygon)
     .accounts({
-      noFlyZone: zonePda,
-      authorityConfig: authorityPda,
-      authority: wallet.publicKey,
+      noFlyZone: deriveZonePda(polygonId),
+      authorityConfig: deriveAuthorityPda(),
+      authority: provider.publicKey,
       systemProgram: SystemProgram.programId,
     })
-    .signers([wallet])
     .rpc();
-
-  return tx;
 }
 
-/** Delete a no-fly zone. The wallet must be the zone's owner. */
-export async function deleteZone(wallet: Keypair, polygonId: string): Promise<string> {
+/** Delete a no-fly zone. The provider's wallet must be the zone's owner. */
+export async function deleteZone(provider: AnchorProvider, polygonId: string): Promise<string> {
   if (USE_MOCKS) {
     console.log("[MOCK] Would delete zone:", polygonId);
     return "MOCK_TX_SIGNATURE";
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const program = getProgram(wallet) as any;
-  const zonePda = deriveZonePda(polygonId);
-
-  const tx = await program.methods
+  const program = getWriteProgram(provider);
+  return program.methods
     .deleteNoFlyZone(polygonId)
     .accounts({
-      noFlyZone: zonePda,
-      owner: wallet.publicKey,
+      noFlyZone: deriveZonePda(polygonId),
+      owner: provider.publicKey,
     })
-    .signers([wallet])
     .rpc();
-
-  return tx;
 }
 
-export { connection, PROGRAM_ID };
+export { PROGRAM_ID };

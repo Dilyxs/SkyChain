@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -9,8 +9,11 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { Keypair } from "@solana/web3.js";
-import { getAllZones, createZone, deleteZone, initAuthority, isAuthorityInitialized } from "./program";
+import { Keypair, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { AnchorProvider } from "@coral-xyz/anchor";
+import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { getAllZones, createZone, deleteZone, initAuthority, isAuthorityInitialized, connection } from "./program";
 import { findContainingZone } from "./geometry";
 import type { NoFlyZone, ZonePoint } from "./types";
 import "leaflet/dist/leaflet.css";
@@ -81,6 +84,40 @@ function Map() {
   const [authorityReady, setAuthorityReady] = useState<boolean | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Wallet adapter
+  const { connection: walletConnection } = useConnection();
+  const anchorWallet = useAnchorWallet();
+
+  // Build AnchorProvider from whichever signer is available.
+  // Wallet adapter takes priority over keypair file.
+  const activeProvider = useMemo<AnchorProvider | null>(() => {
+    if (anchorWallet) {
+      return new AnchorProvider(walletConnection, anchorWallet, { commitment: "confirmed" });
+    }
+    if (keypair) {
+      const kpWallet = {
+        publicKey: keypair.publicKey,
+        signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
+          if (tx instanceof Transaction) tx.sign(keypair);
+          return tx;
+        },
+        signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> => {
+          txs.forEach((tx) => { if (tx instanceof Transaction) tx.sign(keypair); });
+          return txs;
+        },
+      };
+      return new AnchorProvider(connection, kpWallet, { commitment: "confirmed" });
+    }
+    return null;
+  }, [anchorWallet, keypair, walletConnection]);
+
+  // Re-check authority whenever the active signer changes
+  useEffect(() => {
+    if (!activeProvider) { setAuthorityReady(null); return; }
+    setAuthorityReady(null);
+    isAuthorityInitialized().then(setAuthorityReady);
+  }, [activeProvider]);
+
   useEffect(() => {
     getAllZones()
       .then(setZones)
@@ -97,8 +134,6 @@ function Map() {
         const bytes = JSON.parse(ev.target?.result as string) as number[];
         setKeypair(Keypair.fromSecretKey(Uint8Array.from(bytes)));
         setTxStatus({ ok: true, msg: "Keypair loaded." });
-        setAuthorityReady(null);
-        isAuthorityInitialized().then(setAuthorityReady);
       } catch {
         setTxStatus({ ok: false, msg: "Invalid keypair file." });
       }
@@ -123,12 +158,12 @@ function Map() {
   }
 
   async function handleInitAuthority() {
-    if (!keypair) { setTxStatus({ ok: false, msg: "Load a keypair first." }); return; }
+    if (!activeProvider) { setTxStatus({ ok: false, msg: "Connect a wallet or load a keypair first." }); return; }
     if (authorityReady) { setTxStatus({ ok: true, msg: "Authority already initialized." }); return; }
     setInitializing(true);
     setTxStatus(null);
     try {
-      const sig = await initAuthority(keypair);
+      const sig = await initAuthority(activeProvider);
       setAuthorityReady(true);
       setTxStatus({ ok: true, msg: `Authority initialized. TX: ${sig}` });
     } catch (err) {
@@ -139,7 +174,7 @@ function Map() {
   }
 
   async function handleSubmit() {
-    if (!keypair) { setTxStatus({ ok: false, msg: "Load a keypair first." }); return; }
+    if (!activeProvider) { setTxStatus({ ok: false, msg: "Connect a wallet or load a keypair first." }); return; }
     if (!polygonId.trim()) { setTxStatus({ ok: false, msg: "polygon_id is required." }); return; }
     if (vertices.length < 3) { setTxStatus({ ok: false, msg: "Draw at least 3 vertices." }); return; }
     const id = parseInt(zoneId, 10);
@@ -148,9 +183,8 @@ function Map() {
     setSubmitting(true);
     setTxStatus(null);
     try {
-      const sig = await createZone(keypair, polygonId.trim(), id, vertices);
+      const sig = await createZone(activeProvider, polygonId.trim(), id, vertices);
       setTxStatus({ ok: true, msg: `TX: ${sig}` });
-      // Reload zones after successful creation
       const updated = await getAllZones();
       setZones(updated);
       resetDraw();
@@ -162,6 +196,12 @@ function Map() {
   }
 
   const positions = vertices.map((p) => [p.lat, p.lng] as [number, number]);
+
+  const signerLabel = anchorWallet
+    ? `Wallet: ${anchorWallet.publicKey.toString().slice(0, 8)}…`
+    : keypair
+      ? `Keypair: ${keypair.publicKey.toString().slice(0, 8)}…`
+      : null;
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
@@ -211,9 +251,32 @@ function Map() {
             Create No-Fly Zone
           </div>
 
-          {/* Keypair loader */}
+          {/* Active signer indicator */}
+          {signerLabel && (
+            <div style={{ fontSize: 11, color: "#86efac", background: "#14532d", borderRadius: 6, padding: "4px 8px" }}>
+              ✓ {signerLabel}
+            </div>
+          )}
+
+          {/* Wallet adapter connect */}
           <div>
-            <div style={{ marginBottom: 4, color: "#94a3b8" }}>Authority keypair</div>
+            <div style={{ marginBottom: 6, color: "#94a3b8" }}>Browser wallet</div>
+            <WalletMultiButton style={{
+              width: "100%", justifyContent: "center", fontSize: 12,
+              height: 32, background: anchorWallet ? "#166534" : "#334155",
+            }} />
+          </div>
+
+          {/* Divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#475569", fontSize: 11 }}>
+            <div style={{ flex: 1, height: 1, background: "#334155" }} />
+            or
+            <div style={{ flex: 1, height: 1, background: "#334155" }} />
+          </div>
+
+          {/* Keypair file loader */}
+          <div>
+            <div style={{ marginBottom: 4, color: "#94a3b8" }}>Load keypair file</div>
             <button
               onClick={() => fileInputRef.current?.click()}
               style={{
@@ -225,6 +288,9 @@ function Map() {
             </button>
             <input ref={fileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleKeypairFile} />
           </div>
+
+          {/* Divider */}
+          <div style={{ height: 1, background: "#334155" }} />
 
           {/* polygon_id */}
           <div>
@@ -277,7 +343,7 @@ function Map() {
             Click the map to add vertices
           </div>
 
-          {/* One-time authority init */}
+          {/* Init authority */}
           <button
             onClick={handleInitAuthority}
             disabled={initializing || authorityReady === true}
@@ -291,7 +357,7 @@ function Map() {
             }}
           >
             {authorityReady === null
-              ? "Init authority (checking…)"
+              ? activeProvider ? "Init authority (checking…)" : "Init authority (one-time)"
               : authorityReady
                 ? "✓ Authority ready"
                 : initializing ? "Initializing…" : "Init authority (one-time)"}
@@ -341,7 +407,7 @@ function Map() {
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{ y}.png"
         />
 
         {/* Existing no-fly zones */}
@@ -355,13 +421,13 @@ function Map() {
               <strong>{zone.polygonId}</strong><br />
               Zone ID: {zone.zoneId}<br />
               Owner: {zone.owner.toString().slice(0, 8)}...
-              {adminMode && keypair && (
+              {adminMode && activeProvider && (
                 <div style={{ marginTop: 8 }}>
                   <button
                     onClick={async () => {
                       if (!confirm(`Delete zone "${zone.polygonId}"?`)) return;
                       try {
-                        await deleteZone(keypair, zone.polygonId);
+                        await deleteZone(activeProvider, zone.polygonId);
                         setZones((z) => z.filter((z2) => z2.polygonId !== zone.polygonId));
                         setTxStatus({ ok: true, msg: `Deleted ${zone.polygonId}.` });
                       } catch (err) {
