@@ -10,7 +10,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import { Keypair } from "@solana/web3.js";
-import { getAllZones, createZone, initAuthority, isAuthorityInitialized } from "./program";
+import { getAllZones, createZone, deleteZone, initAuthority, isAuthorityInitialized } from "./program";
 import { findContainingZone } from "./geometry";
 import type { NoFlyZone, ZonePoint } from "./types";
 import "leaflet/dist/leaflet.css";
@@ -355,6 +355,28 @@ function Map() {
               <strong>{zone.polygonId}</strong><br />
               Zone ID: {zone.zoneId}<br />
               Owner: {zone.owner.toString().slice(0, 8)}...
+              {adminMode && keypair && (
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Delete zone "${zone.polygonId}"?`)) return;
+                      try {
+                        await deleteZone(keypair, zone.polygonId);
+                        setZones((z) => z.filter((z2) => z2.polygonId !== zone.polygonId));
+                        setTxStatus({ ok: true, msg: `Deleted ${zone.polygonId}.` });
+                      } catch (err) {
+                        setTxStatus({ ok: false, msg: String(err) });
+                      }
+                    }}
+                    style={{
+                      background: "#dc2626", color: "white", border: "none",
+                      borderRadius: 4, padding: "4px 10px", cursor: "pointer", fontSize: 12,
+                    }}
+                  >
+                    Delete zone
+                  </button>
+                </div>
+              )}
             </Popup>
           </Polygon>
         ))}

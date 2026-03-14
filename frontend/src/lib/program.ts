@@ -184,4 +184,27 @@ export async function createZone(
   return tx;
 }
 
+/** Delete a no-fly zone. The wallet must be the zone's owner. */
+export async function deleteZone(wallet: Keypair, polygonId: string): Promise<string> {
+  if (USE_MOCKS) {
+    console.log("[MOCK] Would delete zone:", polygonId);
+    return "MOCK_TX_SIGNATURE";
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const program = getProgram(wallet) as any;
+  const zonePda = deriveZonePda(polygonId);
+
+  const tx = await program.methods
+    .deleteNoFlyZone(polygonId)
+    .accounts({
+      noFlyZone: zonePda,
+      owner: wallet.publicKey,
+    })
+    .signers([wallet])
+    .rpc();
+
+  return tx;
+}
+
 export { connection, PROGRAM_ID };
