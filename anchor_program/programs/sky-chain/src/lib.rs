@@ -8,9 +8,9 @@ pub mod sky_chain {
     use super::*;
     pub fn create_no_fly_zone(
         ctx: Context<CreateNoFlyZone>,
+        polygon_id: String,
         zone_id: u64,
         polygon: Vec<ZonePoints>,
-        polygon_id: String,
     ) -> Result<()> {
         let no_fly_zone = &mut ctx.accounts.no_fly_zone;
         no_fly_zone.zone_id = zone_id;
@@ -19,7 +19,6 @@ pub mod sky_chain {
         no_fly_zone.polygon_id = polygon_id;
         Ok(())
     }
-
     pub fn set_authority(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
         if new_authority
             != "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd" // this is the authority ID hardedcoded in for now!
@@ -30,6 +29,9 @@ pub mod sky_chain {
         }
         let authority = &mut ctx.accounts.authority;
         authority.authority = new_authority;
+        Ok(())
+    }
+    pub fn delete_no_fly_zone(_ctx: Context<DeleteFlyZone>, _polygon_id: String) -> Result<()> {
         Ok(())
     }
 }
@@ -83,10 +85,11 @@ pub struct DeleteFlyZone<'info> {
         mut,
         seeds = [&b"no_fly_zone"[..], &polygon_id.as_bytes()],
         bump,
-        close=authority
+        close=owner,
+        has_one=owner
     )]
     pub no_fly_zone: Account<'info, NoFlyZone>,
-    pub authority: Signer<'info>,
+    pub owner: Signer<'info>,
 }
 #[account]
 #[derive(InitSpace)]
@@ -95,12 +98,11 @@ pub struct NoFlyZone {
     #[max_len(100)]
     pub polygon_id: String,
     pub owner: Pubkey,
-    #[max_len(1000)]
+    #[max_len(10)]
     pub polygon: Vec<ZonePoints>,
 }
 
-#[account]
-#[derive(InitSpace)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
 pub struct ZonePoints {
     pub lat: f64,
     pub lng: f64,
