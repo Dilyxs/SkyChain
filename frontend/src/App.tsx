@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Polygon, Marker, Popup, useMapEvents } from "r
 import L from "leaflet";
 import { getAllZones } from "./lib/program";
 import { findContainingZone } from "./lib/geometry";
-import type { NoFlyZone, Coord } from "./lib/types";
+import type { NoFlyZone, ZonePoint } from "./lib/types";
 import "leaflet/dist/leaflet.css";
 
 // Fix Leaflet default marker icon issue with bundlers
@@ -19,8 +19,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-/** Montreal center */
-const DEFAULT_CENTER: Coord = [45.5017, -73.5673];
+const DEFAULT_CENTER: ZonePoint = { lat: 45.5017, lng: -73.5673 };
 const DEFAULT_ZOOM = 12;
 
 function ClickHandler({
@@ -28,16 +27,16 @@ function ClickHandler({
   onCheck,
 }: {
   zones: NoFlyZone[];
-  onCheck: (result: { lat: number; lng: number; zone: string | null }) => void;
+  onCheck: (result: { lat: number; lng: number; polygonId: string | null }) => void;
 }) {
   useMapEvents({
     click(e) {
-      const point: Coord = [e.latlng.lat, e.latlng.lng];
+      const point: ZonePoint = { lat: e.latlng.lat, lng: e.latlng.lng };
       const found = findContainingZone(point, zones);
       onCheck({
         lat: e.latlng.lat,
         lng: e.latlng.lng,
-        zone: found ? found.name : null,
+        polygonId: found ? found.polygonId : null,
       });
     },
   });
@@ -50,7 +49,7 @@ function App() {
   const [checkResult, setCheckResult] = useState<{
     lat: number;
     lng: number;
-    zone: string | null;
+    polygonId: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -71,7 +70,7 @@ function App() {
           transform: "translateX(-50%)",
           zIndex: 1000,
           background: checkResult
-            ? checkResult.zone
+            ? checkResult.polygonId
               ? "#dc2626"
               : "#16a34a"
             : "#1e293b",
@@ -86,14 +85,14 @@ function App() {
         {loading
           ? "Loading zones from Solana..."
           : checkResult
-            ? checkResult.zone
-              ? `NO-FLY ZONE: ${checkResult.zone}`
+            ? checkResult.polygonId
+              ? `NO-FLY ZONE: ${checkResult.polygonId}`
               : `CLEAR at (${checkResult.lat.toFixed(4)}, ${checkResult.lng.toFixed(4)})`
             : `${zones.length} zones loaded. Click anywhere to check.`}
       </div>
 
       <MapContainer
-        center={DEFAULT_CENTER}
+        center={[DEFAULT_CENTER.lat, DEFAULT_CENTER.lng]}
         zoom={DEFAULT_ZOOM}
         style={{ width: "100%", height: "100%" }}
       >
@@ -103,35 +102,33 @@ function App() {
         />
 
         {/* Draw no-fly zones */}
-        {zones
-          .filter((z) => z.active)
-          .map((zone) => (
-            <Polygon
-              key={zone.zoneId}
-              positions={zone.vertices.map(([lat, lng]) => [lat, lng])}
-              pathOptions={{
-                color: "#dc2626",
-                fillColor: "#dc2626",
-                fillOpacity: 0.3,
-                weight: 2,
-              }}
-            >
-              <Popup>
-                <strong>{zone.name}</strong>
-                <br />
-                ID: {zone.zoneId}
-                <br />
-                Authority: {zone.authority.slice(0, 8)}...
-              </Popup>
-            </Polygon>
-          ))}
+        {zones.map((zone) => (
+          <Polygon
+            key={zone.polygonId}
+            positions={zone.polygon.map((p) => [p.lat, p.lng])}
+            pathOptions={{
+              color: "#dc2626",
+              fillColor: "#dc2626",
+              fillOpacity: 0.3,
+              weight: 2,
+            }}
+          >
+            <Popup>
+              <strong>{zone.polygonId}</strong>
+              <br />
+              Zone ID: {zone.zoneId}
+              <br />
+              Owner: {zone.owner.slice(0, 8)}...
+            </Popup>
+          </Polygon>
+        ))}
 
         {/* Clicked marker */}
         {checkResult && (
           <Marker position={[checkResult.lat, checkResult.lng]}>
             <Popup>
-              {checkResult.zone
-                ? `Inside: ${checkResult.zone}`
+              {checkResult.polygonId
+                ? `Inside: ${checkResult.polygonId}`
                 : "Clear to fly"}
             </Popup>
           </Marker>
