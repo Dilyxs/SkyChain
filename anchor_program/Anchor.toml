@@ -12,7 +12,7 @@ sky_chain = "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

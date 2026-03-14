@@ -21,7 +21,7 @@ pub mod sky_chain {
     }
     pub fn set_authority(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
         if new_authority
-            != "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd" // this is the authority ID hardedcoded in for now!
+            != "2CSS48g6L2xLm7hrcEhFi6B2VjNUgkmMGyxBsQD53HZn" // this is the authority ID hardedcoded in for now!
                 .parse::<Pubkey>()
                 .unwrap()
         {
@@ -47,7 +47,7 @@ pub struct SetAuthority<'info> {
     )]
     pub authority: Account<'info, Authority>,
     #[account(mut,
-    constraint = owner.key() == "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd"
+    constraint = owner.key() == "2CSS48g6L2xLm7hrcEhFi6B2VjNUgkmMGyxBsQD53HZn"
         .parse::<Pubkey>()
         .unwrap() @ SkyChainErrorCode::Unauthorized
     )]
