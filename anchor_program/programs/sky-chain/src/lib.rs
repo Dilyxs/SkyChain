@@ -131,7 +131,7 @@ pub struct Authority {
 #[instruction(drone_serial:String)]
 pub struct CreateDroneLog<'info> {
     #[account(
-        init_if_needed,
+        init,
         space = ANCHOR_DISCRIMINATOR_SIZE + DroneLogs::INIT_SPACE,
         payer=owner,
         seeds=[b"drone_log", drone_serial.as_bytes(), owner.key().as_ref()],
