@@ -8,9 +8,9 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { getAllZones } from "./lib/program";
-import { findContainingZone } from "./lib/geometry";
-import type { NoFlyZone, ZonePoint } from "./lib/types";
+import { getAllZones } from "./program";
+import { findContainingZone } from "./geometry";
+import type { NoFlyZone, ZonePoint } from "./types";
 import "leaflet/dist/leaflet.css";
 
 // Fix Leaflet default marker icon issue with bundlers
