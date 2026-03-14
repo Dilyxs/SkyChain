@@ -18,9 +18,41 @@ pub mod sky_chain {
         no_fly_zone.lat = lat;
         no_fly_zone.lng = lng;
         no_fly_zone.radius_meters = radius_meters;
-        no_fly_zone.authority = ctx.accounts.owner.key();
+        no_fly_zone.owner = ctx.accounts.authority.key();
         Ok(())
     }
+
+    pub fn set_authority(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
+        if new_authority
+            != "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd" // this is the authority ID hardedcoded in for now!
+                .parse::<Pubkey>()
+                .unwrap()
+        {
+            return Err(SkyChainErrorCode::InstructionMissing.into());
+        }
+        let authority = &mut ctx.accounts.authority;
+        authority.authority = new_authority;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct SetAuthority<'info> {
+    #[account(
+        init,
+        payer=owner,
+        space = ANCHOR_DISCRIMINATOR_SIZE + Authority::INIT_SPACE,
+        seeds = [&b"authority"[..]],
+        bump
+    )]
+    pub authority: Account<'info, Authority>,
+    #[account(mut,
+    constraint = owner.key() == "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd"
+        .parse::<Pubkey>()
+        .unwrap() @ SkyChainErrorCode::Unauthorized
+    )]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -28,14 +60,21 @@ pub mod sky_chain {
 pub struct CreateNoFlyZone<'info> {
     #[account(
         init_if_needed,
-        payer = owner,
+        payer = authority,
         space = ANCHOR_DISCRIMINATOR_SIZE + NoFlyZone::INIT_SPACE,
         seeds = [&b"no_fly_zone"[..], &zone_id.to_le_bytes()[..]],
-        bump
+        bump,
     )]
     pub no_fly_zone: Account<'info, NoFlyZone>,
+    #[account(
+    seeds = [b"authority"],
+    bump,
+    has_one = authority @ SkyChainErrorCode::Unauthorized
+)]
+    pub authority_config: Account<'info, Authority>,
+
     #[account(mut)]
-    pub owner: Signer<'info>,
+    pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 #[account]
@@ -45,5 +84,19 @@ pub struct NoFlyZone {
     pub lat: f64,
     pub lng: f64,
     pub radius_meters: u32,
+    pub owner: Pubkey,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Authority {
     pub authority: Pubkey,
+}
+
+#[error_code]
+pub enum SkyChainErrorCode {
+    #[msg("Unauthorized: Only the authority can perform this action.")]
+    Unauthorized,
+    #[msg("Instruction missing: The new authority must be the predefined authority.")]
+    InstructionMissing,
 }
