@@ -5,7 +5,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/map" element={<MapPage />}></Route>
+        <Route path="/" element={<MapPage />}></Route>
         <Route
           path="/walletconnect"
           element={<WalletConnector></WalletConnector>}
