@@ -21,7 +21,7 @@ pub mod sky_chain {
     }
     pub fn set_authority(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
         if new_authority
-            != "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd" // this is the authority ID hardedcoded in for now!
+            != "2CSS48g6L2xLm7hrcEhFi6B2VjNUgkmMGyxBsQD53HZn" // this is the authority ID hardedcoded in for now!
                 .parse::<Pubkey>()
                 .unwrap()
         {
@@ -32,6 +32,20 @@ pub mod sky_chain {
         Ok(())
     }
     pub fn delete_no_fly_zone(_ctx: Context<DeleteFlyZone>, _polygon_id: String) -> Result<()> {
+        Ok(())
+    }
+    pub fn create_drone_log(
+        ctx: Context<CreateDroneLog>,
+        drone_serial: String,
+        time: u64,
+        lat: f64,
+        long: f64,
+    ) -> Result<()> {
+        let drone_log = &mut ctx.accounts.drone_log;
+        drone_log.drone_serial = drone_serial;
+        drone_log.time = time;
+        drone_log.lat = lat;
+        drone_log.long = long;
         Ok(())
     }
 }
@@ -47,7 +61,7 @@ pub struct SetAuthority<'info> {
     )]
     pub authority: Account<'info, Authority>,
     #[account(mut,
-    constraint = owner.key() == "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd"
+    constraint = owner.key() == "2CSS48g6L2xLm7hrcEhFi6B2VjNUgkmMGyxBsQD53HZn"
         .parse::<Pubkey>()
         .unwrap() @ SkyChainErrorCode::Unauthorized
     )]
@@ -112,6 +126,30 @@ pub struct ZonePoints {
 #[derive(InitSpace)]
 pub struct Authority {
     pub authority: Pubkey,
+}
+#[derive(Accounts)]
+#[instruction(drone_serial:String)]
+pub struct CreateDroneLog<'info> {
+    #[account(
+        init_if_needed,
+        space = ANCHOR_DISCRIMINATOR_SIZE + DroneLogs::INIT_SPACE,
+        payer=owner,
+        seeds=[b"drone_log", drone_serial.as_bytes(), owner.key().as_ref()],
+          bump,
+  )]
+    pub drone_log: Account<'info, DroneLogs>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+#[account]
+#[derive(InitSpace)]
+pub struct DroneLogs {
+    #[max_len(40)]
+    pub drone_serial: String,
+    pub time: u64, //UNIX TIMESTAMP!
+    pub lat: f64,
+    pub long: f64,
 }
 
 #[error_code]
