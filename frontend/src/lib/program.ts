@@ -9,7 +9,9 @@ import idl from "../../idl/sky_chain.json";
 // CONFIG
 // ============================================================
 
-const PROGRAM_ID = new PublicKey("Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd");
+const PROGRAM_ID = new PublicKey(
+  "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd",
+);
 const RPC_URL = "https://api.devnet.solana.com";
 const USE_MOCKS = false;
 
@@ -65,9 +67,13 @@ export async function getAllZones(): Promise<NoFlyZone[]> {
 
   const program = getReadProgram();
   const accounts = await program.account.noFlyZone.all();
-  return accounts.map((acc: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+  return accounts.map((acc: any) => {
+    // eslint-disable-line @typescript-eslint/no-explicit-any
     const data = acc.account as {
-      zoneId: BN; polygonId: string; owner: PublicKey; polygon: ZonePoint[];
+      zoneId: BN;
+      polygonId: string;
+      owner: PublicKey;
+      polygon: ZonePoint[];
     };
     return {
       zoneId: data.zoneId.toNumber(),
@@ -89,7 +95,10 @@ export async function getZone(polygonId: string): Promise<NoFlyZone | null> {
   try {
     const acc = await program.account.noFlyZone.fetch(pda);
     const data = acc as {
-      zoneId: BN; polygonId: string; owner: PublicKey; polygon: ZonePoint[];
+      zoneId: BN;
+      polygonId: string;
+      owner: PublicKey;
+      polygon: ZonePoint[];
     };
     return {
       zoneId: data.zoneId.toNumber(),
@@ -151,7 +160,10 @@ export async function createZone(
 }
 
 /** Delete a no-fly zone. The provider's wallet must be the zone's owner. */
-export async function deleteZone(provider: AnchorProvider, polygonId: string): Promise<string> {
+export async function deleteZone(
+  provider: AnchorProvider,
+  polygonId: string,
+): Promise<string> {
   if (USE_MOCKS) {
     console.log("[MOCK] Would delete zone:", polygonId);
     return "MOCK_TX_SIGNATURE";
@@ -163,6 +175,33 @@ export async function deleteZone(provider: AnchorProvider, polygonId: string): P
     .accounts({
       noFlyZone: deriveZonePda(polygonId),
       owner: provider.publicKey,
+    })
+    .rpc();
+}
+export async function createDroneLog(
+  provider: AnchorProvider,
+  drone_serial: string,
+  time_unix: number,
+  lat: number,
+  long: number,
+) {
+  const program = getWriteProgram(provider);
+
+  const [droneLogPda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("drone_log"),
+      Buffer.from(drone_serial),
+      provider.wallet.publicKey.toBuffer(),
+    ],
+    program.programId,
+  );
+
+  return program.methods
+    .createDroneLog(drone_serial, new BN(time_unix), lat, long)
+    .accounts({
+      droneLog: droneLogPda,
+      owner: provider.wallet.publicKey,
+      systemProgram: SystemProgram.programId,
     })
     .rpc();
 }
