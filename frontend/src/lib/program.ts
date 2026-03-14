@@ -1,95 +1,104 @@
 import { Connection, PublicKey, Keypair } from "@solana/web3.js";
-import type { NoFlyZone, Coord, ZoneAccount } from "./types";
+import type { NoFlyZone, ZonePoint } from "./types";
 import { MOCK_ZONES } from "./mockData";
 
 // ============================================================
-// CONFIG - Fill these in when your teammate gives them to you
+// CONFIG
 // ============================================================
 
-/** Replace with your teammate's deployed program ID */
-const PROGRAM_ID = "REPLACE_WITH_PROGRAM_ID";
-
-/** Devnet RPC endpoint */
+const PROGRAM_ID = new PublicKey("Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd");
 const RPC_URL = "https://api.devnet.solana.com";
-
-/** Set to false once IDL is plugged in */
-const USE_MOCKS = true;
+const USE_MOCKS = true; // flip to false when program is deployed
 
 // ============================================================
-// CONNECTION SETUP
+// CONNECTION
 // ============================================================
 
 const connection = new Connection(RPC_URL, "confirmed");
 
 /**
  * Initialize the Anchor program.
- * Uncomment and fill in once you have the IDL.
+ * Uncomment when IDL is plugged in and USE_MOCKS is false.
  */
-// import { AnchorProvider, Program, Idl } from "@coral-xyz/anchor";
-// import idl from "../../idl/no_fly_zone.json";
+// import { AnchorProvider, Program, Idl, BN } from "@coral-xyz/anchor";
+// import idl from "../../idl/sky_chain.json";
 //
 // function getProgram(wallet?: Keypair) {
-//   const provider = new AnchorProvider(
-//     connection,
-//     wallet ? { publicKey: wallet.publicKey, signTransaction: ..., signAllTransactions: ... } : AnchorProvider.local(),
-//     { commitment: "confirmed" }
-//   );
-//   return new Program(idl as Idl, new PublicKey(PROGRAM_ID), provider);
+//   const provider = wallet
+//     ? new AnchorProvider(connection, {
+//         publicKey: wallet.publicKey,
+//         signTransaction: async (tx) => { tx.sign(wallet); return tx; },
+//         signAllTransactions: async (txs) => { txs.forEach(tx => tx.sign(wallet)); return txs; },
+//       }, { commitment: "confirmed" })
+//     : { connection };
+//   return new Program(idl as Idl, PROGRAM_ID, provider);
 // }
+
+// ============================================================
+// DERIVED ADDRESSES
+// ============================================================
+
+/** Authority config PDA - seeds are ["authority"] per the IDL */
+export function deriveAuthorityPda(): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("authority")],
+    PROGRAM_ID
+  );
+  return pda;
+}
+
+/**
+ * Zone PDA - seeds are UNKNOWN, must confirm with teammate.
+ * Placeholder using ["no_fly_zone", polygonId].
+ * UPDATE THIS once teammate confirms the seeds.
+ */
+export function deriveZonePda(polygonId: string): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("no_fly_zone"), Buffer.from(polygonId)],
+    PROGRAM_ID
+  );
+  return pda;
+}
 
 // ============================================================
 // READ OPERATIONS (no wallet needed)
 // ============================================================
 
-/**
- * Fetch all no-fly zones from the blockchain.
- * Currently returns mock data. Swap to real fetch when IDL ready.
- */
 export async function getAllZones(): Promise<NoFlyZone[]> {
   if (USE_MOCKS) {
-    // Simulate network delay
     await new Promise((r) => setTimeout(r, 300));
     return MOCK_ZONES;
   }
 
-  // REAL IMPLEMENTATION (uncomment when IDL is ready):
+  // REAL IMPLEMENTATION:
   // const program = getProgram();
   // const accounts = await program.account.noFlyZone.all();
   // return accounts.map((acc) => ({
-  //   authority: acc.account.authority.toString(),
-  //   zoneId: acc.account.zoneId,
-  //   name: acc.account.name,
-  //   vertices: acc.account.vertices as Coord[],
-  //   active: acc.account.active,
+  //   zoneId: (acc.account.zoneId as BN).toNumber(),
+  //   polygonId: acc.account.polygonId as string,
+  //   owner: (acc.account.owner as PublicKey).toString(),
+  //   polygon: acc.account.polygon as ZonePoint[],
   // }));
 
   return [];
 }
 
-/**
- * Fetch a single zone by its ID.
- * Derives PDA from seeds and fetches directly.
- */
-export async function getZone(zoneId: string): Promise<NoFlyZone | null> {
+export async function getZone(polygonId: string): Promise<NoFlyZone | null> {
   if (USE_MOCKS) {
     await new Promise((r) => setTimeout(r, 100));
-    return MOCK_ZONES.find((z) => z.zoneId === zoneId) ?? null;
+    return MOCK_ZONES.find((z) => z.polygonId === polygonId) ?? null;
   }
 
-  // REAL IMPLEMENTATION:
+  // REAL IMPLEMENTATION (requires correct PDA seeds):
   // const program = getProgram();
-  // const [pda] = PublicKey.findProgramAddressSync(
-  //   [Buffer.from("zone"), Buffer.from(zoneId)],
-  //   new PublicKey(PROGRAM_ID)
-  // );
+  // const pda = deriveZonePda(polygonId);
   // try {
   //   const acc = await program.account.noFlyZone.fetch(pda);
   //   return {
-  //     authority: acc.authority.toString(),
-  //     zoneId: acc.zoneId,
-  //     name: acc.name,
-  //     vertices: acc.vertices as Coord[],
-  //     active: acc.active,
+  //     zoneId: (acc.zoneId as BN).toNumber(),
+  //     polygonId: acc.polygonId as string,
+  //     owner: (acc.owner as PublicKey).toString(),
+  //     polygon: acc.polygon as ZonePoint[],
   //   };
   // } catch {
   //   return null;
@@ -104,29 +113,28 @@ export async function getZone(zoneId: string): Promise<NoFlyZone | null> {
 
 /**
  * Create a new no-fly zone on-chain.
- * Requires the authority wallet to sign.
+ * BLOCKED: Need to confirm whether no_fly_zone account is a PDA or Keypair.
  */
 export async function createZone(
   _wallet: Keypair,
-  _zoneId: string,
-  _name: string,
-  _vertices: Coord[],
+  _polygonId: string,
+  _zoneId: number,
+  _polygon: ZonePoint[],
 ): Promise<string> {
   if (USE_MOCKS) {
-    console.log("[MOCK] Would create zone:", _zoneId);
+    console.log("[MOCK] Would create zone:", _polygonId);
     return "MOCK_TX_SIGNATURE";
   }
 
-  // REAL IMPLEMENTATION:
+  // REAL IMPLEMENTATION (PDA approach - if teammate confirms seeds):
   // const program = getProgram(wallet);
-  // const [zonePda] = PublicKey.findProgramAddressSync(
-  //   [Buffer.from("zone"), Buffer.from(zoneId)],
-  //   new PublicKey(PROGRAM_ID)
-  // );
+  // const zonePda = deriveZonePda(polygonId);
+  // const authorityPda = deriveAuthorityPda();
   // const tx = await program.methods
-  //   .createZone(zoneId, name, vertices)
+  //   .createNoFlyZone(polygonId, new BN(zoneId), polygon)
   //   .accounts({
-  //     zone: zonePda,
+  //     noFlyZone: zonePda,
+  //     authorityConfig: authorityPda,
   //     authority: wallet.publicKey,
   //     systemProgram: SystemProgram.programId,
   //   })
@@ -134,23 +142,23 @@ export async function createZone(
   //   .rpc();
   // return tx;
 
+  // ALTERNATIVE (Keypair approach - if no_fly_zone is NOT a PDA):
+  // const program = getProgram(wallet);
+  // const zoneKeypair = Keypair.generate();
+  // const authorityPda = deriveAuthorityPda();
+  // const tx = await program.methods
+  //   .createNoFlyZone(polygonId, new BN(zoneId), polygon)
+  //   .accounts({
+  //     noFlyZone: zoneKeypair.publicKey,
+  //     authorityConfig: authorityPda,
+  //     authority: wallet.publicKey,
+  //     systemProgram: SystemProgram.programId,
+  //   })
+  //   .signers([wallet, zoneKeypair])
+  //   .rpc();
+  // return tx;
+
   return "";
 }
 
-// ============================================================
-// UTILITY
-// ============================================================
-
-/**
- * Derive PDA for a zone. Useful for direct lookups.
- * Seeds must match your teammate's Rust program.
- */
-export function deriveZonePda(zoneId: string): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("zone"), Buffer.from(zoneId)],
-    new PublicKey(PROGRAM_ID)
-  );
-  return pda;
-}
-
-export { connection };
+export { connection, PROGRAM_ID };

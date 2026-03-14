@@ -1,45 +1,37 @@
 import type { NoFlyZone } from "./types";
 
-/**
- * Mock zones for UI development.
- * These are real no-fly zones in Montreal for demo purposes.
- * Replace with on-chain data once IDL is plugged in.
- */
 export const MOCK_ZONES: NoFlyZone[] = [
   {
-    authority: "MOCK_AUTHORITY",
-    zoneId: "mtl-airport",
-    name: "Montreal-Trudeau Airport",
-    active: true,
-    vertices: [
-      [45.4577, -73.7508],
-      [45.4577, -73.7308],
-      [45.4777, -73.7308],
-      [45.4777, -73.7508],
+    owner: "MOCK_AUTHORITY",
+    zoneId: 1,
+    polygonId: "mtl-airport",
+    polygon: [
+      { lat: 45.4577, lng: -73.7508 },
+      { lat: 45.4577, lng: -73.7308 },
+      { lat: 45.4777, lng: -73.7308 },
+      { lat: 45.4777, lng: -73.7508 },
     ],
   },
   {
-    authority: "MOCK_AUTHORITY",
-    zoneId: "mtl-downtown",
-    name: "Downtown Montreal Restricted",
-    active: true,
-    vertices: [
-      [45.4950, -73.5800],
-      [45.4950, -73.5550],
-      [45.5100, -73.5550],
-      [45.5100, -73.5800],
+    owner: "MOCK_AUTHORITY",
+    zoneId: 1,
+    polygonId: "mtl-downtown",
+    polygon: [
+      { lat: 45.4950, lng: -73.5800 },
+      { lat: 45.4950, lng: -73.5550 },
+      { lat: 45.5100, lng: -73.5550 },
+      { lat: 45.5100, lng: -73.5800 },
     ],
   },
   {
-    authority: "MOCK_AUTHORITY",
-    zoneId: "mtl-olympic",
-    name: "Olympic Stadium Area",
-    active: true,
-    vertices: [
-      [45.5550, -73.5580],
-      [45.5550, -73.5480],
-      [45.5620, -73.5480],
-      [45.5620, -73.5580],
+    owner: "MOCK_AUTHORITY",
+    zoneId: 2,
+    polygonId: "mtl-olympic",
+    polygon: [
+      { lat: 45.5550, lng: -73.5580 },
+      { lat: 45.5550, lng: -73.5480 },
+      { lat: 45.5620, lng: -73.5480 },
+      { lat: 45.5620, lng: -73.5580 },
     ],
   },
 ];

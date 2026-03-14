@@ -1,0 +1,249 @@
+{
+  "address": "Hy29fH4BaM5PtuoVMPfQMwenb3d1ELBbfXq4YzuFxGDd",
+  "metadata": {
+    "name": "sky_chain",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "create_no_fly_zone",
+      "discriminator": [
+        50,
+        244,
+        169,
+        18,
+        153,
+        195,
+        74,
+        194
+      ],
+      "accounts": [
+        {
+          "name": "no_fly_zone",
+          "writable": true
+        },
+        {
+          "name": "authority_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "authority_config"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "polygon_id",
+          "type": "string"
+        },
+        {
+          "name": "zone_id",
+          "type": "u64"
+        },
+        {
+          "name": "polygon",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "ZonePoints"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "delete_no_fly_zone",
+      "discriminator": [
+        117,
+        191,
+        245,
+        130,
+        247,
+        12,
+        110,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "no_fly_zone",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "no_fly_zone"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "_polygon_id",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "set_authority",
+      "discriminator": [
+        133,
+        250,
+        37,
+        21,
+        110,
+        163,
+        26,
+        121
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Authority",
+      "discriminator": [
+        36,
+        108,
+        254,
+        18,
+        167,
+        144,
+        27,
+        36
+      ]
+    },
+    {
+      "name": "NoFlyZone",
+      "discriminator": [
+        16,
+        15,
+        83,
+        30,
+        62,
+        146,
+        109,
+        234
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: Only the authority can perform this action."
+    },
+    {
+      "code": 6001,
+      "name": "InstructionMissing",
+      "msg": "Instruction missing: The new authority must be the predefined authority."
+    }
+  ],
+  "types": [
+    {
+      "name": "Authority",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NoFlyZone",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "zone_id",
+            "type": "u64"
+          },
+          {
+            "name": "polygon_id",
+            "type": "string"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "polygon",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "ZonePoints"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZonePoints",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lat",
+            "type": "f64"
+          },
+          {
+            "name": "lng",
+            "type": "f64"
+          }
+        ]
+      }
+    }
+  ]
+}
