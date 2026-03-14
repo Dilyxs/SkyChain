@@ -34,6 +34,20 @@ pub mod sky_chain {
     pub fn delete_no_fly_zone(_ctx: Context<DeleteFlyZone>, _polygon_id: String) -> Result<()> {
         Ok(())
     }
+    pub fn create_drone_log(
+        ctx: Context<CreateDroneLog>,
+        drone_serial: String,
+        time: u64,
+        lat: f64,
+        long: f64,
+    ) -> Result<()> {
+        let drone_log = &mut ctx.accounts.drone_log;
+        drone_log.drone_serial = drone_serial;
+        drone_log.time = time;
+        drone_log.lat = lat;
+        drone_log.long = long;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -112,6 +126,30 @@ pub struct ZonePoints {
 #[derive(InitSpace)]
 pub struct Authority {
     pub authority: Pubkey,
+}
+#[derive(Accounts)]
+#[instruction(drone_serial:String)]
+pub struct CreateDroneLog<'info> {
+    #[account(
+        init_if_needed,
+        space = ANCHOR_DISCRIMINATOR_SIZE + DroneLogs::INIT_SPACE,
+        payer=owner,
+        seeds=[b"drone_log", drone_serial.as_bytes(), owner.key().as_ref()],
+          bump,
+  )]
+    pub drone_log: Account<'info, DroneLogs>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+#[account]
+#[derive(InitSpace)]
+pub struct DroneLogs {
+    #[max_len(40)]
+    pub drone_serial: String,
+    pub time: u64, //UNIX TIMESTAMP!
+    pub lat: f64,
+    pub long: f64,
 }
 
 #[error_code]
