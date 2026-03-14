@@ -22,33 +22,7 @@
       "accounts": [
         {
           "name": "drone_log",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  100,
-                  114,
-                  111,
-                  110,
-                  101,
-                  95,
-                  108,
-                  111,
-                  103
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "drone_serial"
-              },
-              {
-                "kind": "account",
-                "path": "owner"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "owner",
@@ -66,7 +40,7 @@
           "type": "string"
         },
         {
-          "name": "time",
+          "name": "time_unix",
           "type": "u64"
         },
         {
@@ -294,7 +268,7 @@
             "type": "string"
           },
           {
-            "name": "time",
+            "name": "time_unix",
             "type": "u64"
           },
           {

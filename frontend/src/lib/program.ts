@@ -187,17 +187,20 @@ export async function createDroneLog(
 ) {
   const program = getWriteProgram(provider);
 
+  const timeUnixBN = new BN(time_unix);
+
   const [droneLogPda] = PublicKey.findProgramAddressSync(
     [
       Buffer.from("drone_log"),
       Buffer.from(drone_serial),
       provider.wallet.publicKey.toBuffer(),
+      timeUnixBN.toArrayLike(Buffer, "be", 8),
     ],
     program.programId,
   );
 
   return program.methods
-    .createDroneLog(drone_serial, new BN(time_unix), lat, long)
+    .createDroneLog(drone_serial, timeUnixBN, lat, long)
     .accounts({
       droneLog: droneLogPda,
       owner: provider.wallet.publicKey,
@@ -205,5 +208,4 @@ export async function createDroneLog(
     })
     .rpc();
 }
-
 export { PROGRAM_ID };

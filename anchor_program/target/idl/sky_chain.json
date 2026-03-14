@@ -8,6 +8,52 @@
   },
   "instructions": [
     {
+      "name": "create_drone_log",
+      "discriminator": [
+        73,
+        250,
+        39,
+        3,
+        14,
+        109,
+        37,
+        242
+      ],
+      "accounts": [
+        {
+          "name": "drone_log",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "drone_serial",
+          "type": "string"
+        },
+        {
+          "name": "time_unix",
+          "type": "u64"
+        },
+        {
+          "name": "lat",
+          "type": "f64"
+        },
+        {
+          "name": "long",
+          "type": "f64"
+        }
+      ]
+    },
+    {
       "name": "create_no_fly_zone",
       "discriminator": [
         50,
@@ -161,6 +207,19 @@
       ]
     },
     {
+      "name": "DroneLogs",
+      "discriminator": [
+        36,
+        150,
+        157,
+        63,
+        179,
+        137,
+        172,
+        169
+      ]
+    },
+    {
       "name": "NoFlyZone",
       "discriminator": [
         16,
@@ -195,6 +254,30 @@
           {
             "name": "authority",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DroneLogs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "drone_serial",
+            "type": "string"
+          },
+          {
+            "name": "time_unix",
+            "type": "u64"
+          },
+          {
+            "name": "lat",
+            "type": "f64"
+          },
+          {
+            "name": "long",
+            "type": "f64"
           }
         ]
       }
