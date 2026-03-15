@@ -36,12 +36,21 @@ const DEFAULT_CENTER: ZonePoint = { lat: 45.5017, lng: -73.5673 };
 const DEFAULT_ZOOM = 12;
 const MAX_VERTICES = 10;
 const WINDOW_SECS = 15 * 60; // 15 minutes
+const SLIDER_MIN = 1577836800; // Jan 1 2020 UTC
+const SLIDER_MAX = 1767225600; // Jan 1 2026 UTC
 
-const DRONE_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#f97316', '#8b5cf6', '#ec4899', '#14b8a6', '#ef4444'];
+const DRONE_COLORS = [
+  "#e63946","#f4a261","#2a9d8f","#457b9d","#a8dadc",
+  "#e9c46a","#f77f00","#4cc9f0","#7209b7","#06d6a0",
+  "#fb5607","#ffbe0b","#3a86ff","#8338ec","#ff006e",
+  "#00b4d8","#80b918","#d62828","#023e8a","#f72585",
+  "#b5e48c","#ffd166","#ef476f","#118ab2",
+];
+
 function droneColor(serial: string): string {
   let hash = 0;
-  for (const c of serial) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
-  return DRONE_COLORS[Math.abs(hash) % DRONE_COLORS.length];
+  for (const c of serial) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
+  return DRONE_COLORS[hash % DRONE_COLORS.length];
 }
 
 function fmtTime(unix: number): string {
@@ -103,7 +112,12 @@ function Map() {
   // Drone logs + slider
   const [droneLogs, setDroneLogs] = useState<DroneLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
-  const [sliderTime, setSliderTime] = useState<number | null>(null);
+  const [sliderMin, setSliderMin] = useState(SLIDER_MIN);
+  const [sliderMax, setSliderMax] = useState(SLIDER_MAX);
+  const [sliderTime, setSliderTime] = useState(SLIDER_MIN);
+  const [playing, setPlaying] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(1);
+  const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Wallet adapter
@@ -158,13 +172,32 @@ function Map() {
       .then((logs) => {
         setDroneLogs(logs);
         if (logs.length > 0) {
-          const minT = Math.min(...logs.map((l) => l.timeUnix));
-          setSliderTime(minT - (minT % WINDOW_SECS));
+          const min = logs.reduce((a, b) => a.timeUnix < b.timeUnix ? a : b).timeUnix;
+          const max = logs.reduce((a, b) => a.timeUnix > b.timeUnix ? a : b).timeUnix;
+          setSliderMin(min);
+          setSliderMax(max);
+          setSliderTime(min);
         }
       })
       .catch(console.error)
       .finally(() => setLogsLoading(false));
   }, []);
+
+
+  useEffect(() => {
+    if (!playing) {
+      if (playRef.current) clearInterval(playRef.current);
+      return;
+    }
+    playRef.current = setInterval(() => {
+      setSliderTime((t) => {
+        const next = t + WINDOW_SECS;
+        if (next > sliderMax) { setPlaying(false); return sliderMax; }
+        return next;
+      });
+    }, 1000 / playSpeed);
+    return () => { if (playRef.current) clearInterval(playRef.current); };
+  }, [playing, playSpeed, sliderMax]);
 
   function handleKeypairFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -456,7 +489,7 @@ function Map() {
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{ y}.png"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
         {/* Existing no-fly zones */}
@@ -523,8 +556,8 @@ function Map() {
         )}
 
         {/* Drone log markers for current window */}
-        {sliderTime !== null && droneLogs
-          .filter((l) => l.timeUnix >= sliderTime! && l.timeUnix < sliderTime! + WINDOW_SECS)
+        {droneLogs
+          .filter((l) => l.timeUnix >= sliderTime && l.timeUnix < sliderTime + WINDOW_SECS)
           .map((log, i) => (
             <CircleMarker
               key={`${log.droneSerial}-${log.timeUnix}-${i}`}
@@ -548,49 +581,55 @@ function Map() {
       </MapContainer>
 
       {/* Time slider bar */}
-      {!logsLoading && droneLogs.length > 0 && sliderTime !== null && (() => {
-        const minT = Math.min(...droneLogs.map((l) => l.timeUnix));
-        const maxT = Math.max(...droneLogs.map((l) => l.timeUnix));
-        const minSnap = minT - (minT % WINDOW_SECS);
-        const maxSnap = maxT - (maxT % WINDOW_SECS);
-        const inWindow = droneLogs.filter((l) => l.timeUnix >= sliderTime! && l.timeUnix < sliderTime! + WINDOW_SECS).length;
-        return (
-          <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 1000,
-            background: '#0f172a', borderTop: '1px solid #334155',
-            padding: '10px 20px 14px', fontFamily: 'monospace', color: 'white',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-              <button
-                onClick={() => setSliderTime((t) => Math.max(minSnap, (t ?? minSnap) - WINDOW_SECS))}
-                style={{ background: '#334155', border: 'none', color: 'white', borderRadius: 4, padding: '2px 10px', cursor: 'pointer', fontSize: 16 }}
-              >‹</button>
-              <div style={{ flex: 1, textAlign: 'center', fontSize: 12 }}>
-                <span style={{ color: '#94a3b8' }}>Window: </span>
-                <span>{fmtTime(sliderTime)}</span>
-                <span style={{ color: '#475569' }}> – </span>
-                <span>{fmtTime(sliderTime + WINDOW_SECS)}</span>
-                <span style={{ marginLeft: 12, color: inWindow > 0 ? '#86efac' : '#475569' }}>
-                  {inWindow} drone{inWindow !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <button
-                onClick={() => setSliderTime((t) => Math.min(maxSnap, (t ?? minSnap) + WINDOW_SECS))}
-                style={{ background: '#334155', border: 'none', color: 'white', borderRadius: 4, padding: '2px 10px', cursor: 'pointer', fontSize: 16 }}
-              >›</button>
-            </div>
+      {!logsLoading && (
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 1000,
+          background: '#0f172a', borderTop: '1px solid #334155',
+          padding: '10px 20px 14px', fontFamily: 'monospace', color: 'white',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <button
+              onClick={() => { setPlaying(false); setSliderTime((t) => Math.max(sliderMin, t - WINDOW_SECS)); }}
+              style={{ background: '#334155', border: 'none', color: 'white', borderRadius: 4, padding: '2px 10px', cursor: 'pointer', fontSize: 16 }}
+            >‹</button>
             <input
               type="range"
-              min={minSnap}
-              max={maxSnap}
-              step={WINDOW_SECS}
+              min={sliderMin} max={sliderMax} step={WINDOW_SECS}
               value={sliderTime}
-              onChange={(e) => setSliderTime(Number(e.target.value))}
-              style={{ width: '100%', accentColor: '#7c3aed', cursor: 'pointer' }}
+              onChange={(e) => { setPlaying(false); setSliderTime(Number(e.target.value)); }}
+              style={{ flex: 1, accentColor: '#7c3aed', cursor: 'pointer' }}
             />
+            <button
+              onClick={() => { setPlaying(false); setSliderTime((t) => Math.min(sliderMax, t + WINDOW_SECS)); }}
+              style={{ background: '#334155', border: 'none', color: 'white', borderRadius: 4, padding: '2px 10px', cursor: 'pointer', fontSize: 16 }}
+            >›</button>
+            <span style={{ color: '#94a3b8', fontSize: 11 }}>Speed</span>
+            <input
+              type="range" min={1} max={10} step={1} value={playSpeed}
+              onChange={(e) => setPlaySpeed(Number(e.target.value))}
+              style={{ width: 70, accentColor: '#7c3aed', cursor: 'pointer' }}
+            />
+            <span style={{ color: '#e2e8f0', fontSize: 11, minWidth: 24 }}>{playSpeed}x</span>
+            <button
+              onClick={() => {
+                if (sliderTime >= sliderMax) setSliderTime(sliderMin);
+                setPlaying((p) => !p);
+              }}
+              style={{ background: playing ? '#7c3aed' : '#334155', border: 'none', color: 'white', borderRadius: 4, padding: '3px 14px', cursor: 'pointer', fontSize: 14 }}
+            >{playing ? '⏸' : '▶'}</button>
           </div>
-        );
-      })()}
+          <div style={{ textAlign: 'center', fontSize: 12 }}>
+            <span style={{ color: '#94a3b8' }}>Window: </span>
+            <span>{fmtTime(sliderTime)}</span>
+            <span style={{ color: '#475569' }}> – </span>
+            <span>{fmtTime(sliderTime + WINDOW_SECS)}</span>
+            {(() => {
+              const n = droneLogs.filter((l) => l.timeUnix >= sliderTime && l.timeUnix < sliderTime + WINDOW_SECS).length;
+              return <span style={{ marginLeft: 12, color: n > 0 ? '#86efac' : '#475569' }}>{n} drone{n !== 1 ? 's' : ''}</span>;
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
