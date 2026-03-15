@@ -1,7 +1,7 @@
 import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import { Program, BN, AnchorProvider } from "@coral-xyz/anchor";
 import type { Idl } from "@coral-xyz/anchor";
-import type { NoFlyZone, ZonePoint } from "./types";
+import type { NoFlyZone, ZonePoint, DroneLog } from "./types";
 import { MOCK_ZONES } from "./mockData";
 import idl from "../../idl/sky_chain.json";
 
@@ -67,8 +67,8 @@ export async function getAllZones(): Promise<NoFlyZone[]> {
 
   const program = getReadProgram();
   const accounts = await program.account.noFlyZone.all();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return accounts.map((acc: any) => {
-    // eslint-disable-line @typescript-eslint/no-explicit-any
     const data = acc.account as {
       zoneId: BN;
       polygonId: string;
@@ -106,6 +106,32 @@ export async function getZone(polygonId: string): Promise<NoFlyZone | null> {
       owner: data.owner.toString(),
       polygon: data.polygon,
     };
+  } catch {
+    return null;
+  }
+}
+
+export async function getAllDroneLogs(): Promise<DroneLog[]> {
+  const program = getReadProgram();
+  const accounts = await program.account.droneLogs.all();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return accounts.map((acc: any) => {
+    const data = acc.account as { droneSerial: string; timeUnix: BN; lat: number; long: number };
+    return {
+      droneSerial: data.droneSerial,
+      timeUnix: data.timeUnix.toNumber(),
+      lat: data.lat,
+      long: data.long,
+    };
+  });
+}
+
+/** Returns the authority pubkey stored in authority_config, or null if not initialized. */
+export async function getAuthority(): Promise<string | null> {
+  const program = getReadProgram();
+  try {
+    const acc = await program.account.authority.fetch(deriveAuthorityPda()) as { authority: PublicKey };
+    return acc.authority.toString();
   } catch {
     return null;
   }

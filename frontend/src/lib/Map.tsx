@@ -5,6 +5,7 @@ import {
   Polygon,
   Polyline,
   Marker,
+  CircleMarker,
   Popup,
   useMapEvents,
 } from "react-leaflet";
@@ -13,9 +14,9 @@ import { Keypair, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { AnchorProvider } from "@coral-xyz/anchor";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { getAllZones, createZone, deleteZone, initAuthority, isAuthorityInitialized, connection } from "./program";
+import { getAllZones, getAllDroneLogs, createZone, deleteZone, initAuthority, getAuthority, connection } from "./program";
 import { findContainingZone } from "./geometry";
-import type { NoFlyZone, ZonePoint } from "./types";
+import type { NoFlyZone, ZonePoint, DroneLog } from "./types";
 import "leaflet/dist/leaflet.css";
 
 // Fix Leaflet default marker icon issue with bundlers
@@ -34,6 +35,21 @@ L.Icon.Default.mergeOptions({
 const DEFAULT_CENTER: ZonePoint = { lat: 45.5017, lng: -73.5673 };
 const DEFAULT_ZOOM = 12;
 const MAX_VERTICES = 10;
+const WINDOW_SECS = 15 * 60; // 15 minutes
+
+const DRONE_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#f97316', '#8b5cf6', '#ec4899', '#14b8a6', '#ef4444'];
+function droneColor(serial: string): string {
+  let hash = 0;
+  for (const c of serial) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
+  return DRONE_COLORS[Math.abs(hash) % DRONE_COLORS.length];
+}
+
+function fmtTime(unix: number): string {
+  return new Date(unix * 1000).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
 
 // ── Click handlers ────────────────────────────────────────────
 
@@ -82,6 +98,12 @@ function Map() {
   const [submitting, setSubmitting] = useState(false);
   const [initializing, setInitializing] = useState(false);
   const [authorityReady, setAuthorityReady] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
+  // Drone logs + slider
+  const [droneLogs, setDroneLogs] = useState<DroneLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [sliderTime, setSliderTime] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Wallet adapter
@@ -113,9 +135,15 @@ function Map() {
 
   // Re-check authority whenever the active signer changes
   useEffect(() => {
-    if (!activeProvider) { setAuthorityReady(null); return; }
+    if (!activeProvider) { setAuthorityReady(null); setIsAdmin(null); return; }
     setAuthorityReady(null);
-    isAuthorityInitialized().then(setAuthorityReady);
+    setIsAdmin(null);
+    getAuthority().then((authorityPubkey) => {
+      setAuthorityReady(authorityPubkey !== null);
+      if (authorityPubkey !== null) {
+        setIsAdmin(authorityPubkey === activeProvider.publicKey.toString());
+      }
+    });
   }, [activeProvider]);
 
   useEffect(() => {
@@ -123,6 +151,19 @@ function Map() {
       .then(setZones)
       .catch(console.error)
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    getAllDroneLogs()
+      .then((logs) => {
+        setDroneLogs(logs);
+        if (logs.length > 0) {
+          const minT = Math.min(...logs.map((l) => l.timeUnix));
+          setSliderTime(minT - (minT % WINDOW_SECS));
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLogsLoading(false));
   }, []);
 
   function handleKeypairFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -343,25 +384,33 @@ function Map() {
             Click the map to add vertices
           </div>
 
-          {/* Init authority */}
-          <button
-            onClick={handleInitAuthority}
-            disabled={initializing || authorityReady === true}
-            style={{
-              width: "100%", padding: "6px 0",
-              background: authorityReady ? "#14532d" : initializing ? "#334155" : "#0f172a",
-              color: authorityReady ? "#86efac" : "#94a3b8",
-              border: "1px solid #334155", borderRadius: 6,
-              cursor: (initializing || authorityReady === true) ? "not-allowed" : "pointer",
-              fontSize: 11,
-            }}
-          >
-            {authorityReady === null
-              ? activeProvider ? "Init authority (checking…)" : "Init authority (one-time)"
-              : authorityReady
-                ? "✓ Authority ready"
-                : initializing ? "Initializing…" : "Init authority (one-time)"}
-          </button>
+          {/* Authority status */}
+          {authorityReady === false && (
+            <button
+              onClick={handleInitAuthority}
+              disabled={initializing}
+              style={{
+                width: "100%", padding: "6px 0", background: initializing ? "#334155" : "#0f172a",
+                color: "#94a3b8", border: "1px solid #334155", borderRadius: 6,
+                cursor: initializing ? "not-allowed" : "pointer", fontSize: 11,
+              }}
+            >
+              {initializing ? "Initializing…" : "Init authority (one-time)"}
+            </button>
+          )}
+          {authorityReady === null && activeProvider && (
+            <div style={{ fontSize: 11, color: "#64748b" }}>Checking authority…</div>
+          )}
+          {authorityReady && isAdmin === true && (
+            <div style={{ fontSize: 11, color: "#86efac", background: "#14532d", borderRadius: 6, padding: "4px 8px" }}>
+              ✓ You are the authority
+            </div>
+          )}
+          {authorityReady && isAdmin === false && (
+            <div style={{ fontSize: 11, color: "#fca5a5", background: "#7f1d1d", borderRadius: 6, padding: "4px 8px" }}>
+              ✗ Not the authority — writes will fail
+            </div>
+          )}
 
           {/* Submit / Clear */}
           <div style={{ display: "flex", gap: 8 }}>
@@ -473,11 +522,75 @@ function Map() {
           </Marker>
         )}
 
+        {/* Drone log markers for current window */}
+        {sliderTime !== null && droneLogs
+          .filter((l) => l.timeUnix >= sliderTime! && l.timeUnix < sliderTime! + WINDOW_SECS)
+          .map((log, i) => (
+            <CircleMarker
+              key={`${log.droneSerial}-${log.timeUnix}-${i}`}
+              center={[log.lat, log.long]}
+              radius={6}
+              pathOptions={{ color: droneColor(log.droneSerial), fillColor: droneColor(log.droneSerial), fillOpacity: 0.85, weight: 1.5 }}
+            >
+              <Popup>
+                <strong>{log.droneSerial}</strong><br />
+                {fmtTime(log.timeUnix)}<br />
+                {log.lat.toFixed(5)}, {log.long.toFixed(5)}
+              </Popup>
+            </CircleMarker>
+          ))
+        }
+
         {adminMode
           ? <DrawClickHandler onVertex={handleVertex} />
           : <CheckClickHandler zones={zones} onCheck={setCheckResult} />
         }
       </MapContainer>
+
+      {/* Time slider bar */}
+      {!logsLoading && droneLogs.length > 0 && sliderTime !== null && (() => {
+        const minT = Math.min(...droneLogs.map((l) => l.timeUnix));
+        const maxT = Math.max(...droneLogs.map((l) => l.timeUnix));
+        const minSnap = minT - (minT % WINDOW_SECS);
+        const maxSnap = maxT - (maxT % WINDOW_SECS);
+        const inWindow = droneLogs.filter((l) => l.timeUnix >= sliderTime! && l.timeUnix < sliderTime! + WINDOW_SECS).length;
+        return (
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 1000,
+            background: '#0f172a', borderTop: '1px solid #334155',
+            padding: '10px 20px 14px', fontFamily: 'monospace', color: 'white',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <button
+                onClick={() => setSliderTime((t) => Math.max(minSnap, (t ?? minSnap) - WINDOW_SECS))}
+                style={{ background: '#334155', border: 'none', color: 'white', borderRadius: 4, padding: '2px 10px', cursor: 'pointer', fontSize: 16 }}
+              >‹</button>
+              <div style={{ flex: 1, textAlign: 'center', fontSize: 12 }}>
+                <span style={{ color: '#94a3b8' }}>Window: </span>
+                <span>{fmtTime(sliderTime)}</span>
+                <span style={{ color: '#475569' }}> – </span>
+                <span>{fmtTime(sliderTime + WINDOW_SECS)}</span>
+                <span style={{ marginLeft: 12, color: inWindow > 0 ? '#86efac' : '#475569' }}>
+                  {inWindow} drone{inWindow !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <button
+                onClick={() => setSliderTime((t) => Math.min(maxSnap, (t ?? minSnap) + WINDOW_SECS))}
+                style={{ background: '#334155', border: 'none', color: 'white', borderRadius: 4, padding: '2px 10px', cursor: 'pointer', fontSize: 16 }}
+              >›</button>
+            </div>
+            <input
+              type="range"
+              min={minSnap}
+              max={maxSnap}
+              step={WINDOW_SECS}
+              value={sliderTime}
+              onChange={(e) => setSliderTime(Number(e.target.value))}
+              style={{ width: '100%', accentColor: '#7c3aed', cursor: 'pointer' }}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 }

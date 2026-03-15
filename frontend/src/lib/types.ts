@@ -1,3 +1,10 @@
+export interface DroneLog {
+  droneSerial: string;
+  timeUnix: number;
+  lat: number;
+  long: number;
+}
+
 export interface ZonePoint {
   lat: number;
   lng: number;
