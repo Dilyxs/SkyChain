@@ -115,6 +115,7 @@ function Map() {
   const [sliderMin, setSliderMin] = useState(SLIDER_MIN);
   const [sliderMax, setSliderMax] = useState(SLIDER_MAX);
   const [sliderTime, setSliderTime] = useState(SLIDER_MIN);
+  const [showDrones, setShowDrones] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
   const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -556,7 +557,7 @@ function Map() {
         )}
 
         {/* Drone log markers for current window */}
-        {droneLogs
+        {showDrones && droneLogs
           .filter((l) => l.timeUnix >= sliderTime && l.timeUnix < sliderTime + WINDOW_SECS)
           .map((log, i) => (
             <CircleMarker
@@ -588,6 +589,10 @@ function Map() {
           padding: '10px 20px 14px', fontFamily: 'monospace', color: 'white',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <button
+              onClick={() => setShowDrones((v) => !v)}
+              style={{ background: showDrones ? '#334155' : '#7f1d1d', border: 'none', color: showDrones ? 'white' : '#fca5a5', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 12 }}
+            >{showDrones ? '✦ Drones' : '✦ Hidden'}</button>
             <button
               onClick={() => { setPlaying(false); setSliderTime((t) => Math.max(sliderMin, t - WINDOW_SECS)); }}
               style={{ background: '#334155', border: 'none', color: 'white', borderRadius: 4, padding: '2px 10px', cursor: 'pointer', fontSize: 16 }}
